@@ -9,7 +9,7 @@ This guide explains how to compile the project using CMake, focusing on the top-
 
 ## Example models
 
-A typical model is the [Hourglass] (Models/hourglass.glsl).
+A typical model is the [Hourglass] (GLSL/hourglass.glsl).
 
 ## Requirements
 
