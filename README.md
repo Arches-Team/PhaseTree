@@ -5,7 +5,7 @@ Eric Galin, Pierre Hubert-Brierre, Hugo Schott, Marie-Paule Cani, Adrien Peytavi
 
 ## Example models
 
-A typical model is the [Hourglass] (GLSL/hourglass.glsl).
+A typical model is the [Hourglass](GLSL/hourglass.glsl).
 
 ## Requirements
 

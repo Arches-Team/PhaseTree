@@ -112,22 +112,33 @@ float Cylinder(vec3 p, vec3 a, vec3 b, float r) {
   return sign(d) * sqrt(abs(d)) / baba;
 }
 
+// Union
+// a, b : Fields
 float U(float a, float b) {
   return min(a, b);
 }
 
+// Ternary union
+// a, b, c : Fields
 float U(float a, float b, float c) {
   return min(a, min(b, c));
 }
+
+// Smooth union
+// a, b : Fields
+//    r : Radius
 float SU(float a, float b, float r) {
   r *= 6.0;
   float h = max(r - abs(a - b), 0.0) / r;
   return U(a, b) - h * h * h * r * (1.0 / 6.0);
 }
 
+// Difference
+// a, b : Fields
 float D(float a, float b) {
   return max(a, -b);
 }
+
 float SD(float a, float b, float r) {
   r *= 6.0;
   float h = max(r - abs(-a - b), 0.0) / r;
@@ -165,17 +176,19 @@ vec4 Over(vec4 a, vec4 b) {
   return Under(b, a);
 }
 
-float MinMat(vec4 x) {
+// Get minimum phase
+float MinPhase(vec4 x) {
   return min(min(x.x, x.y), min(x.z, x.w));
 }
 
+// Get index of the minimum phase
 int MinIndex(vec4 v) {
   return (v.y < v.x) ? ((v.z < v.y) ? ((v.w < v.z) ? 3 : 2) : ((v.w < v.y) ? 3 : 1)) : ((v.z < v.x) ? ((v.w < v.z) ? 3 : 2) : ((v.w < v.x) ? 3 : 0));
 }
 
+// Get i-th element of multiphase, obvious, provided here only in case of array implementation
 float GetIth(vec4 a, int i) {
-  float aa[4] = float[4](a.x, a.y, a.z, a.w);
-  return aa[i];
+  return a[i];
 }
 
 // Hybrid operators
@@ -190,12 +203,6 @@ vec4 Extract(vec4 a, int m) {
   float cc[4] = float[4](E, E, E, E);
 
   cc[m] = aa[m];
-  return vec4(cc[0], cc[1], cc[2], cc[3]);
-}
-
-vec4 Keep(vec4 v, int m) {
-  float cc[4] = float[4](E, E, E, E);
-  cc[m] = v[m];
   return vec4(cc[0], cc[1], cc[2], cc[3]);
 }
 
@@ -308,7 +315,7 @@ bool SphereTrace(Ray ray, float rB, out float t, out int s) {
   for(int i = 0; i < Steps; i++) {
     s = i;
     vec3 p = Eval(ray, t);
-    float v = MinMat(Object(p));
+    float v = MinPhase(Object(p));
     // Hit object
     if(v < 0.0) {
       s = i;
@@ -348,11 +355,6 @@ float AmbientOcclusion(vec3 p, vec3 n, float r, int a) {
 
   ao /= float(a);
   return ao;
-}
-
-// Background color
-vec3 background(vec3 rd) {
-  return mix(vec3(.652, .451, .995), vec3(.552, .897, .995), rd.z * .5 + .5);
 }
 
 const vec3 lp = vec3(5., 10., 25.);
@@ -405,20 +407,20 @@ vec3 Color(vec3 p) {
   vec4 v = Object(p);
   vec3 c = vec3(0.0);
   int n = 0;
-  if(v.x < 0.001) {
-    c += vec3(1.0, 0.0, 0.0);
+  if(v.x < 0.00) {
+    c += vec3(0.6, 0.0, 0.6);
     n++;
   }
-  if(v.y < 0.001) {
-    c += vec3(0.0, 0.6, 0.0);
+  if(v.y < 0.00) {
+    c += vec3(0.0, 0.5, 0.5);
     n++;
   }
-  if(v.z < 0.001) {
-    c += vec3(0.9, 0.8, 0.0);
+  if(v.z < 0.00) {
+    c += vec3(0.8, 0.8, 0.5);
     n++;
   }
-  if(v.w < 0.001) {
-    c += vec3(0.0, 0.2, 1.0);
+  if(v.w < 0.00) {
+    c += vec3(0.0, 0.1, 0.5);
     n++;
   }
   if(n == 0)
@@ -431,7 +433,7 @@ vec3 Color(vec3 p) {
 // p : point,
 // n : normal at point
 vec3 Shade(vec3 p, vec3 n) {
-  vec3 c = 0.1 + 0.15 * background(n) + 0.65 * Color(p);
+  vec3 c = 0.3 + 0.65 * Color(p);
   c += .2 * AmbientOcclusion(p + .025 * n, n, 20.0, 0) * vec3(1., 1., 1.);
   c += .2 * Light(p, n);
   return c;
@@ -488,7 +490,7 @@ void mainImage(out vec4 color, vec2 pxy) {
   vec3 pt = Eval(ray, t);
 
   // Shade background
-  vec3 rgb = background(ray.d);
+  vec3 rgb = vec3(0.595, 0.585, 0.995);
 
   if(h) {
     // Compute normal
