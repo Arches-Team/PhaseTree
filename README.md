@@ -3,9 +3,18 @@
 This repository contains the source code of the ACM TOG / SIGGRAPH 2026 paper *"[The PhaseTree: Multiphase Signed Distance Fields](https://perso.liris.cnrs.fr/eric.galin/Articles/2026-phasetree.pdf)", 
 Eric Galin, Pierre Hubert-Brierre, Hugo Schott, Marie-Paule Cani, Adrien Peytavie, Eric Guérin*
 
+## Fundamentals
+
+Objects should be defined as functions vec4 Object(in vec3 p) returning a vec4 containing the phase values. 
+
 ## Example models
 
-A typical model is the [Hourglass](GLSL/hourglass.glsl).
+The [Void](GLSL/void.glsl) model simply defines a sphere with a one phase. The purpose of this example is to show a fast rendering setup for other models.
+
+A typical example is the [Hourglass](GLSL/hourglass.glsl) that implements some multiphase operators and primitives needed for modeling the shape.
+
+The [MultiPhase](GLSL/multiphase.glsl) code implements multiphase primitives, internal and hybrid operators.
+The other files implement various objects based in those functions.
 
 ## Requirements
 

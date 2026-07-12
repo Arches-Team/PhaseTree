@@ -7,22 +7,6 @@ vec3 Eval(Ray ray, float t) {
   return ray.o + ray.d * t;
 }
 
-// Hashing function
-// Returns a random number in [-1,1]
-float Hash(float seed) {
-  return fract(sin(seed) * 43758.5453);
-}
-
-// Cosine direction
-vec3 Cosine(float seed, vec3 nor) {
-  float u = Hash(78.233 + seed);
-  float v = Hash(10.873 + seed);
-
-  float a = 6.2831853 * v;
-  u = 2. * u - 1.;
-  return normalize(nor + vec3(sqrt(1. - u * u) * vec2(cos(a), sin(a)), u));
-}
-
 // Rotation matrix around z axis
 // a : Angle
 mat3 RotateZ(float a) {
@@ -192,22 +176,29 @@ float GetIth(vec4 a, int i) {
 }
 
 // Hybrid operators
-// They combine a multiphase object with a simple sign distane field
+// Combine a multiphase object with a simple signed distane field
 
+// Hybrid intersection between a multiphase and a signed distane field
+// a : Multiphase
+// b : Signed distance field
 vec4 Inter(vec4 a, float b) {
   return vec4(max(a.x, b), max(a.y, b), max(a.z, b), max(a.w, b));
 }
 
+// Keep only one phase 
+// a : Multiphase
+// m : Phase index
 vec4 Extract(vec4 a, int m) {
-  float aa[4] = float[4](a.x, a.y, a.z, a.w);
-  float cc[4] = float[4](E, E, E, E);
-
-  cc[m] = aa[m];
-  return vec4(cc[0], cc[1], cc[2], cc[3]);
+  vec4 e = vec4(E);
+  e[m] = a[m];
+  return e;
 }
 
+// Hybrid difference between a multiphase and a signed distane field
+// a : Multiphase
+// b : Signed distance field
 vec4 Difference(vec4 a, float b) {
-  return vec4(max(a.x, -b), max(a.y, -b), max(a.z, -b), max(a.w, -b));
+  return max(a, vec4(-b));
 }
 
 // Objects
@@ -331,97 +322,41 @@ bool SphereTrace(Ray ray, float rB, out float t, out int s) {
   return false;
 }
 
-// Ambient occlusion
-// p : Point
-// n : Normal
-// a : Number of smaples
-float AmbientOcclusion(vec3 p, vec3 n, float r, int a) {
-  if(a == 0) {
-    return 1.;
-  }
-
-  float ao = 0.;
-
-  for(int i = 0; i < a; i++) {
-    vec3 d = Cosine(581.123 * float(i), n);
-
-    int s;
-    float t;
-    bool h = SphereTrace(Ray(p, d), r, t, s);
-    if(!h) {
-      ao += 1.;
-    }
-  }
-
-  ao /= float(a);
-  return ao;
-}
-
-const vec3 lp = vec3(5., 10., 25.);
-
+// Lighting with shadows
+// p : Point.
+// n : Unit normal.
 float Light(vec3 p, vec3 n) {
+  const vec3 lp = vec3(-10., -15., 25.);
   // point light
 
-  vec3 l = normalize(lp - p);
+  vec3 d = normalize(lp - p);
 
   // Not even Phong shading, use weighted cosine instead for smooth transitions
-  float diff = pow(.5 * (1. + dot(n, l)), 2.);
+  float diff = pow(.5 * (1. + dot(n, d)), 2.);
 
   int s;
   float t;
-  bool h = SphereTrace(Ray(p + .1 * n, l), 25., t, s);
+  bool h = SphereTrace(Ray(p + .1 * n, d), 25., t, s);
   if(!h) {
     return diff;
   }
   return 0.;
 }
-
-float SmoothLight(vec3 p, vec3 n, int a) {
-  if(a == 0)
-    return 1.;
-
-  // point light  
-  vec3 l = normalize(lp - p);
-
-  float lo = 0.;
-
-  for(int i = 0; i < a; i++) {
-    vec3 d = Cosine(581.123 * float(i), n);
-    d = normalize(l + d * .15);
-    int s;
-    float t;
-    bool h = SphereTrace(Ray(p, d), 20., t, s);
-    if(!h) {
-      lo += 1.;
-    } else if(t > 100.) {
-      lo += 1.;
-    }
-  }
-
-  lo /= float(a);
-  return lo;
-
-}
-
+// Compute the color
+// Could use a simpler version, the loop and safeguards are for debuging purposes
+// p : Point.
 vec3 Color(vec3 p) {
+  // Array of colors
+  const vec3 color[4] = vec3[4](vec3(1.0, 0.0, 0.0), vec3(0.0, 0.8, 0.2), vec3(0.9, 0.8, 0.1), vec3(0.0, 0.3, 0.9));
   vec4 v = Object(p);
-  vec3 c = vec3(0.0);
+
   int n = 0;
-  if(v.x < 0.00) {
-    c += vec3(0.6, 0.0, 0.6);
-    n++;
-  }
-  if(v.y < 0.00) {
-    c += vec3(0.0, 0.5, 0.5);
-    n++;
-  }
-  if(v.z < 0.00) {
-    c += vec3(0.8, 0.8, 0.5);
-    n++;
-  }
-  if(v.w < 0.00) {
-    c += vec3(0.0, 0.1, 0.5);
-    n++;
+  vec3 c = vec3(0.0);
+  for(int i = 0; i < 4; i++) {
+    if(v[i] < 0.001) {
+      c += color[i];
+      n++;
+    }
   }
   if(n == 0)
     return vec3(1., 1.0, 1.0);
@@ -430,12 +365,10 @@ vec3 Color(vec3 p) {
 }
 
 // Shading and lighting
-// p : point,
-// n : normal at point
+// p : point.
+// n : Normal at point.
 vec3 Shade(vec3 p, vec3 n) {
-  vec3 c = 0.3 + 0.65 * Color(p);
-  c += .2 * AmbientOcclusion(p + .025 * n, n, 20.0, 0) * vec3(1., 1., 1.);
-  c += .2 * Light(p, n);
+  vec3 c = 0.35 + 0.5 * Color(p) + 0.15 * Light(p, n);
   return c;
 }
 
