@@ -45,8 +45,11 @@ float BlobToSdf(vec2 v, float k) {
 // Signed distance fields
 
 // Sphere
-float Sphere(vec3 p, vec3 c, float R) {
-  float d = length(p - c) - R;
+// p : Point
+// c : Center
+// r : Radius
+float Sphere(vec3 p, vec3 c, float r) {
+  float d = length(p - c) - r;
   return d;
 }
 
@@ -60,11 +63,20 @@ float Box(vec3 p, vec3 c, vec3 r) {
   return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
 }
 
+// Infinite slab
+// p : Point
+// c : Center
+// n : Normal
+// r : Half thickness
 float Slab(vec3 p, vec3 c, vec3 n, float r) {
   float d = abs(dot(p - c, normalize(n))) - r;
   return d;
 }
 
+// Infinite slab
+//    p : Point
+// a, b : Segment
+//    r : Radius
 float Capsule(vec3 p, vec3 a, vec3 b, float r) {
   vec3 pa = p - a, ba = b - a;
   float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
@@ -87,6 +99,10 @@ float Cone(vec3 p, vec2 c, float h) {
   return sqrt(d) * sign(s);
 }
 
+// Cylinder
+//    p : Point
+// a, b : Segment
+//    r : Radius
 float Cylinder(vec3 p, vec3 a, vec3 b, float r) {
   vec3 ba = b - a;
   vec3 pa = p - a;
@@ -241,9 +257,9 @@ vec4 Difference(vec4 a, float b) {
 
 // Contact between two phases
 // An alternative implementation could be: vec4 Contact(vec4 v, int ma, int mb, float r) 
-// a, b : Signed distane fields
+//   a, b : Signed distane fields
 // ma, mb : Phase indexes
-// r : Contact coefficient
+//      r : Contact coefficient
 vec4 Contact(float a, float b, int ma, int mb, float r) {
 
   float xa = a * r;
@@ -257,4 +273,31 @@ vec4 Contact(float a, float b, int ma, int mb, float r) {
   cc[mb] = tb;
 
   return cc;
+}
+
+// Compute the smooth contact between two separate fields and return the contact object as a multiphase value
+//   a, b : Fields
+// ma, mb : Phase indexes
+//     r : Blending radius
+//     c : Contact coefficient
+vec4 ContactSmooth(float a, float b, int ma, int mb, float r, float c) {
+  float ca = c;
+  float cb = 1.0 - c;
+
+  float xa = a * c;
+  float xb = b * (1. - c);
+      // Separation field
+
+    // Smooth union instead of working with a and b directly
+  float u = SU(a, b, r); 
+
+    // Two phases
+  float ta = max(u, (xa - xb));
+  float tb = max(u, -(xa - xb));
+
+  vec4 v = vec4(E);
+  v[ma] = ta;
+  v[mb] = tb;
+
+  return v;
 }

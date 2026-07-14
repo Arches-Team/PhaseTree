@@ -3,6 +3,9 @@ struct Ray {
   vec3 d;
 };
 
+// Compute the point along the ray
+// ray : The ray
+//   t : Position
 vec3 Eval(Ray ray, float t) {
   return ray.o + ray.d * t;
 }
@@ -33,8 +36,8 @@ Ray CreateRay(vec2 m, vec2 p, vec3 or, vec3 ta) {
   return Ray(or, rd);
 }
 
-const int Steps = 500;
-const float Epsilon = .001;// Marching epsilon
+const int Steps = 500; // Maximum number of stesp
+const float Epsilon = .001; // Marching epsilon
 
 // Signed distance fields
 
@@ -67,22 +70,26 @@ vec4 Object(vec3 p) {
 }
 
 // Get minimum phase
+// v : Multiphase value
 float MinPhase(vec4 v) {
   return min(min(v.x, v.y), min(v.z, v.w));
 }
 
 // Get index of the minimum phase
+// v : Multiphase value
 int MinIndex(vec4 v) {
   return (v.y < v.x) ? ((v.z < v.y) ? ((v.w < v.z) ? 3 : 2) : ((v.w < v.y) ? 3 : 1)) : ((v.z < v.x) ? ((v.w < v.z) ? 3 : 2) : ((v.w < v.x) ? 3 : 0));
 }
 
 // Get i-th element of multiphase, obvious, provided here only in case of array implementation
+// v : Multiphase value
+// y : Index
 float GetIth(vec4 a, int i) {
   return a[i];
 }
 
 // Calculate object normal
-// p : point
+// p : Point
 vec3 ObjectNormal(vec3 p) {
   float eps = .001;
   vec3 n;
