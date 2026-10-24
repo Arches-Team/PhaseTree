@@ -1,228 +1,30 @@
-struct Ray {
-  vec3 o;
-  vec3 d;
-};
+// Hourglass modeled by assembling 4 different phases: metal (0), glass (1), sand (2) and wood (3)
 
-vec3 Eval(Ray ray, float t) {
-  return ray.o + ray.d * t;
-}
+#include "common/render.glsl"
 
-// Rotation matrix around z axis
-// a : Angle
-mat3 RotateZ(float a) {
-  float sa = sin(a);
-  float ca = cos(a);
-  return mat3(ca, sa, 0., -sa, ca, 0., 0., 0., 1.);
-}
-
-// Compute the ray
-// m : Mouse position
-// p : Pixel
-// or, ta : Origin and target points
-Ray CreateRay(vec2 m, vec2 p, vec3 or, vec3 ta) {
-  float a = 3. * 3.1415 * m.x;
-  float le = 3.8;
-
-  or *= RotateZ(3. * 3.14 * m.x);
-  or *= 2.0 - clamp(m.y, 0.0, 1.0); // Zoom
-
-  vec3 ww = normalize(ta - or);
-  vec3 uu = normalize(cross(ww, vec3(0., 0., 1.)));
-  vec3 vv = normalize(cross(uu, ww));
-  vec3 rd = normalize(p.x * uu + p.y * vv + le * ww);
-  return Ray(or, rd);
-}
-
-const int Steps = 200;      // Maximum number of steps
-const float Epsilon = .001; // Marching epsilon
-
-// Signed distance fields
-
-const float E = 1e4;
-
-// Sphere
-float Sphere(vec3 p, vec3 c, float R) {
-  float d = length(p - c) - R;
-  return d;
-}
-
-// Box
-// p : Point
-// c : Center
-// r : Radius, i.e. dimension of the box
-float Box(vec3 p, vec3 c, vec3 r) {
-
-  vec3 q = abs(p - c) - r;
-  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
-
-float Slab(vec3 p, vec3 c, vec3 n, float r) {
-  float d = abs(dot(p - c, normalize(n))) - r;
-  return d;
-}
-
-float Capsule(vec3 p, vec3 a, vec3 b, float r) {
-  vec3 pa = p - a, ba = b - a;
-  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-  return length(pa - ba * h) - r;
-}
-
-float Cone(vec3 p, vec2 c, float h) {
-  // c is the sin/cos of the angle, h is height
-  // Alternatively pass q instead of (c,h),
-  // which is the point at the base in 2D
-  vec2 q = h * vec2(c.x / c.y, -1.0);
-
-  p = p.xzy;
-  vec2 w = vec2(length(p.xz), p.y);
-  vec2 a = w - q * clamp(dot(w, q) / dot(q, q), 0.0, 1.0);
-  vec2 b = w - q * vec2(clamp(w.x / q.x, 0.0, 1.0), 1.0);
-  float k = sign(q.y);
-  float d = min(dot(a, a), dot(b, b));
-  float s = max(k * (w.x * q.y - w.y * q.x), k * (w.y - q.y));
-  return sqrt(d) * sign(s);
-}
-
-float Cylinder(vec3 p, vec3 a, vec3 b, float r) {
-  vec3 ba = b - a;
-  vec3 pa = p - a;
-  float baba = dot(ba, ba);
-  float paba = dot(pa, ba);
-  float x = length(pa * baba - ba * paba) - r * baba;
-  float y = abs(paba - baba * 0.5) - baba * 0.5;
-  float x2 = x * x;
-  float y2 = y * y * baba;
-  float d = (max(x, y) < 0.0) ? -min(x2, y2) : (((x > 0.0) ? x2 : 0.0) + ((y > 0.0) ? y2 : 0.0));
-  return sign(d) * sqrt(abs(d)) / baba;
-}
-
-// Union
-// a, b : Fields
-float U(float a, float b) {
-  return min(a, b);
-}
-
-// Ternary union
-// a, b, c : Fields
-float U(float a, float b, float c) {
-  return min(a, min(b, c));
-}
-
-// Smooth union
-// a, b : Fields
-//    r : Radius
-float SU(float a, float b, float r) {
-  r *= 6.0;
-  float h = max(r - abs(a - b), 0.0) / r;
-  return U(a, b) - h * h * h * r * (1.0 / 6.0);
-}
-
-// Difference
-// a, b : Fields
-float D(float a, float b) {
-  return max(a, -b);
-}
-
-float SD(float a, float b, float r) {
-  r *= 6.0;
-  float h = max(r - abs(-a - b), 0.0) / r;
-  return max(a, -b);//- h*h*h*r*(1.0/6.0);
-}
-
-float I(float a, float b) {
-  return max(a, b);
-}
-
-float Round(float a, float r) {
-  return a - r;
-}
-
-// Multiphase operators
-// Mostly binary operators that combine multiphase objects
-
-vec4 Set(float a, int m) {
-  vec4 pa = vec4(E);
-  pa[m] = a;
-  return pa;
-}
-
-// Under
-// a : field function of left sub-tree
-// b : field function of right sub-tree
-vec4 Under(vec4 a, vec4 b) {
- // Same material
-  return vec4(D(U(a.x, b.x), U(a.y, a.z, a.w)), D(U(a.y, b.y), U(a.x, a.z, a.w)), D(U(a.z, b.z), U(a.x, a.y, a.w)), D(U(a.w, b.w), U(a.x, a.y, a.z)));
-}
-
-// Over
-// a,b : field functions of left and right sub-trees
-vec4 Over(vec4 a, vec4 b) {
-  return Under(b, a);
-}
-
-// Get minimum phase
-float MinPhase(vec4 x) {
-  return min(min(x.x, x.y), min(x.z, x.w));
-}
-
-// Get index of the minimum phase
-int MinIndex(vec4 v) {
-  return (v.y < v.x) ? ((v.z < v.y) ? ((v.w < v.z) ? 3 : 2) : ((v.w < v.y) ? 3 : 1)) : ((v.z < v.x) ? ((v.w < v.z) ? 3 : 2) : ((v.w < v.x) ? 3 : 0));
-}
-
-// Get i-th element of multiphase, obvious, provided here only in case of array implementation
-float GetIth(vec4 a, int i) {
-  return a[i];
-}
-
-// Hybrid operators
-// Combine a multiphase object with a simple signed distane field
-
-// Hybrid intersection between a multiphase and a signed distane field
-// a : Multiphase
-// b : Signed distance field
-vec4 Inter(vec4 a, float b) {
-  return vec4(max(a.x, b), max(a.y, b), max(a.z, b), max(a.w, b));
-}
-
-// Keep only one phase 
-// a : Multiphase
-// m : Phase index
-vec4 Extract(vec4 a, int m) {
-  vec4 e = vec4(E);
-  e[m] = a[m];
-  return e;
-}
-
-// Hybrid difference between a multiphase and a signed distane field
-// a : Multiphase
-// b : Signed distance field
-vec4 Difference(vec4 a, float b) {
-  return max(a, vec4(-b));
-}
-
-// Objects
-
-float Wood(vec3 p) {
-  vec3 pz = vec3(p.xy, abs(p.z));
-  float d = D(Round(Cylinder(pz, vec3(0., 0., 6.1), vec3(0., 0.0, 6.7), 5.3), 0.1), Cylinder(pz, vec3(0., 0., 5.8), vec3(0., 0.0, 7.0), 2.2));
-
-  return d;
-}
-
+// Proxy offset
 const float offset = 0.2;
 
+// Wooden discs
+// p : Point
+float Wood(vec3 p) {
+  vec3 pz = vec3(p.xy, abs(p.z));
+  return D(Round(Cylinder(pz, vec3(0., 0., 6.1), vec3(0., 0.0, 6.7), 5.3), 0.1), Cylinder(pz, vec3(0., 0., 5.8), vec3(0., 0.0, 7.0), 2.2));
+}
+
+// Twisted metal rods
+// p : Point
 float Metal(vec3 p) {
   vec3 q = vec3(abs(p.xy), p.z);
   q -= vec3(3., 3., 0.);
 
-  // Optimize with proxies
+  // Proxy: test against a capsule of radius 1.2, return the distance to a capsule of radius 1.0
   float b = Capsule(q, vec3(0.0, 0.0, -8.0), vec3(0.0, 0.0, 8.0), 1.0 + offset);
   if(b > 0.0)
     return b + offset;
 
+  // Twist, the Lipschitz constant of the twisted box is bounded by 1.5
   float angle = q.z;
-
   vec3 qr = q;
   qr.xy = qr.xy * mat2(cos(angle), sin(angle), -sin(angle), cos(angle));
   float c = Box(qr, vec3(0.0, 0.0, 0.0), vec3(0.35, .35, 5.9)) / 1.5;
@@ -236,207 +38,53 @@ float Metal(vec3 p) {
   return c;
 }
 
+// Glass bulbs filled with sand
+// p : Point
 vec4 Glass(vec3 p) {
-
   float gu = Sphere(p, vec3(0.0, 0.0, 3.5), 3.1);
   float gl = Sphere(p, vec3(0.0, 0.0, -3.5), 3.1);
-// Proxy
+
+  // Proxy: test against spheres of radius 3.9, return the distance to spheres of radius 3.7
+  // The glass and the sand are within 3.64 of the sphere centers (radius 3.1 plus at most 0.54 from smooth union)
   float b = Round(U(gu, gl), 1.0) + offset;
   if(b > 0.0)
     return vec4(E, b + offset, b + offset, E);
 
+  // Thin glass shell
   float g = SU(gl, gu, 0.54);
-
   float gg = SU(Sphere(p, vec3(0.0, 0.0, -3.5), 3.0), Sphere(p, vec3(0.0, 0.0, 3.5), 3.0), 0.51);
   g = SD(g, gg, 0.0005);
 
- // Sable
+  // Sand
   float s = I(Box(p, vec3(0.0, 0.0, 1.25), vec3(4.0, 4.0, 1.25)), gg);
-  float t = I(Round(Cone(p - vec3(0.0, 0.0, -3.0), vec2(sin(3.14 / 3.5), cos(3.14 / 3.5)), 3.5), 0.2), gg);
+  float t = I(Round(Cone(p - vec3(0.0, 0.0, -3.0), vec2(sin(Pi / 3.5), cos(Pi / 3.5)), 3.5), 0.2), gg);
   s = U(s, t);
-  vec4 sand = Set(s, 2);
 
-  vec4 v = Set(g, 1);
-  v = Under(v, sand);
-  return v;
+  return Under(Set(g, 1), Set(s, 2));
 }
 
-// Potential field of the object
-// p : point
+// Multiphase signed distance field of the model
+// p : Point
 vec4 Object(vec3 p) {
-
   p.z -= 5.;
   vec4 glass = Glass(p);
   vec4 metal = Set(Metal(p), 0);
+  vec4 wood = Set(Wood(p), 3);
 
-// Wood
-  vec4 Wood = Set(Wood(p), 3);
-  vec4 v = Over(glass, Wood);
+  vec4 v = Over(glass, wood);
   v = Under(metal, v);
-  v = Difference(v, Box(p, vec3(-5.0, -5.0, 0.0), vec3(5.0, 5.0, 11.0)));
 
-  const float a = 3.1415 / 4.0;
+  // Cut out a quarter
+  v = Difference(v, Box(p, vec3(-5.0, -5.0, 0.0), vec3(5.0, 5.0, 11.0)));
+  const float a = Pi / 4.0;
   p.xy = p.xy * mat2(cos(a), sin(a), -sin(a), cos(a));
   v = Difference(v, Box(p, vec3(-5.0, -5.0, 0.0), vec3(5.0, 5.0, 11.0)));
 
   return v;
 }
 
-// Calculate object normal
-// p : point
-vec3 ObjectNormal(vec3 p) {
-  const float eps = .001;
-  vec3 n;
-  vec4 ov = Object(p);
-  int mi = MinIndex(ov);
-  float v = GetIth(ov, mi);
-  n.x = GetIth(Object(vec3(p.x + eps, p.y, p.z)), mi) - v;
-  n.y = GetIth(Object(vec3(p.x, p.y + eps, p.z)), mi) - v;
-  n.z = GetIth(Object(vec3(p.x, p.y, p.z + eps)), mi) - v;
-  return normalize(n);
-}
-
-// Trace ray using ray marching
-// ray : the ray 
-// h : hit
-// s : Number of steps
-bool SphereTrace(Ray ray, float rB, out float t, out int s) {
-  t = 0.0;
-
-  for(int i = 0; i < Steps; i++) {
-    s = i;
-    vec3 p = Eval(ray, t);
-    float v = MinPhase(Object(p));
-    // Hit object
-    if(v < 0.0) {
-      s = i;
-      return true;
-    }
-    // Move along ray
-    t += max(Epsilon, abs(v) / 1.);
-    // Escape marched far away
-    if(t > rB) {
-      return false;
-    }
-  }
-  return false;
-}
-
-// Lighting with shadows
-// p : Point.
-// n : Unit normal.
-float Light(vec3 p, vec3 n) {
-  const vec3 lp = vec3(-10., -15., 25.);
-  // point light
-
-  vec3 d = normalize(lp - p);
-
-  // Not even Phong shading, use weighted cosine instead for smooth transitions
-  float diff = pow(.5 * (1. + dot(n, d)), 2.);
-
-  int s;
-  float t;
-  bool h = SphereTrace(Ray(p + .1 * n, d), 25., t, s);
-  if(!h) {
-    return diff;
-  }
-  return 0.;
-}
-// Compute the color
-// Could use a simpler version, the loop and safeguards are for debuging purposes
-// p : Point.
-vec3 Color(vec3 p) {
-  // Array of colors
-  const vec3 color[4] = vec3[4](vec3(1.0, 0.0, 0.0), vec3(0.0, 0.8, 0.2), vec3(0.9, 0.8, 0.1), vec3(0.0, 0.3, 0.9));
-  vec4 v = Object(p);
-
-  int n = 0;
-  vec3 c = vec3(0.0);
-  for(int i = 0; i < 4; i++) {
-    if(v[i] < 0.001) {
-      c += color[i];
-      n++;
-    }
-  }
-  if(n == 0)
-    return vec3(1., 1.0, 1.0);
-  c /= float(n);
-  return c;
-}
-
-// Shading and lighting
-// p : point.
-// n : Normal at point.
-vec3 Shade(vec3 p, vec3 n) {
-  vec3 c = 0.35 + 0.5 * Color(p) + 0.15 * Light(p, n);
-  return c;
-}
-
-// Shading with number of steps
-vec3 ShadeSteps(int n) {
-  float t = float(n) / (float(Steps - 1));
-  return .5 + mix(vec3(.05, .05, .5), vec3(.65, .39, .65), t);
-}
-
-// Picture in picture
-// pixel : Pixel
-// pip : Boolean, true if pixel was in sub-picture zone
-vec2 Pip(vec2 pixel, out bool pip) {
-  // Pixel coordinates
-  vec2 p = (-iResolution.xy + 2. * pixel) / iResolution.y;
-  if(pip == true) {
-    const float fraction = 1. / 4.;
-    // Recompute pixel coordinates in sub-picture
-    if((pixel.x < iResolution.x * fraction) && (pixel.y < iResolution.y * fraction)) {
-      p = (-iResolution.xy * fraction + 2. * pixel) / (iResolution.y * fraction);
-      pip = true;
-    } else {
-      pip = false;
-    }
-  }
-  return p;
-}
-
 // Image
-void mainImage(out vec4 color, vec2 pxy) {
-  // Picture in picture on
-  bool pip = true;
-
-  // Pixel
-  vec2 pixel = Pip(pxy, pip);
-
-  // Mouse
-  vec2 m = iMouse.xy / iResolution.xy;
-
-  // Camera
-  Ray ray = CreateRay(m, pixel, vec3(24., 0., 7.), vec3(0., 0., 5.));
-
-  // Trace ray
-
-  // Hit and number of steps
-  float t;
-  int s;
-
-  bool h = SphereTrace(ray, 100., t, s);
-
-  // Position
-  vec3 pt = Eval(ray, t);
-
-  // Shade background
-  vec3 rgb = vec3(0.595, 0.585, 0.995);
-
-  if(h) {
-    // Compute normal
-    vec3 n = ObjectNormal(pt);
-
-    // Shade object with light
-    rgb = Shade(pt, n);
-  }
-
-  // Uncomment this line to shade image with false colors representing the number of steps
-  if(pip == true) {
-    rgb = ShadeSteps(s);
-  }
-
+void mainImage(out vec4 color, in vec2 pxy) {
+  vec3 rgb = Render(pxy, iResolution.xy, iMouse.xy, vec3(24., 0., 7.), vec3(0., 0., 5.));
   color = vec4(rgb, 1.);
 }

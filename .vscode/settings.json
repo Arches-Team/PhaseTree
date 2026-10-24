@@ -1,0 +1,5 @@
+{
+  // Only needed with "shader-toy.webglVersion": "WebGL2": common/render.glsl does not compile on its own,
+  // as it calls the Object function defined by each model
+  "shader-toy.testCompileIncludedFiles": false
+}
